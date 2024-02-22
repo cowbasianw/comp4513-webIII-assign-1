@@ -119,18 +119,22 @@ app.get('/f4/drivers/:ref', async (req, res) => {
             .select()
             .eq('driverRef', ref)
             .single(); // Ensure only one record is returned
+
         if (error) {
             throw error;
         }
+
         if (!data) {
-            return res.status(404).json({ error: 'drivers not found' });
+            throw new Error('Driver not found');
         }
+
         res.json(data);
     } catch (error) {
-        console.error('Error fetching drivers:', error.message);
-        res.status(500).json({ error: 'Internal Server Error' });
+        console.error('Error fetching driver:', error.message);
+        res.status(404).json({ error: 'Driver not found' });
     }
 });
+
 app.get('/f4/drivers/race/:raceId', async (req, res) => {
     try {
         const { raceId } = req.params;
@@ -327,6 +331,29 @@ app.get('/f4/result/:raceId', async (req, res) => {
     }
 
 });
+app.get('/f4/races/:raceId', async (req, res) => {
+    const { raceId } = req.params;
+    // Fetch drivers whose surname begins with the provided value, sorted by surname in ascending order, and limited to the provided number
+    try {
+        const { data, error } = await supabase
+            .from('races')
+            .select(`*, circuit(name, location, country)`)
+            .eq('raceId', raceId)
+
+        if (error) {
+            throw error;
+        }
+
+        if (!data || data.length === 0) {
+            return res.status(404).json({ error: 'No data found for the specified raceId' });
+        }
+        res.send(data);
+    } catch (error) {
+        console.error('Error fetching race data:', error.message);
+        res.status(500).json({ error: 'No data found for the specified raceId' });
+    }
+
+});
 app.get('/f4/result/drivers/:driverRef', async (req, res) => {
     try {
         const { driverRef } = req.params;
@@ -378,6 +405,14 @@ app.get('/f4/drivers/search/:startsWith', async (req, res) => {
         .select('*')
         .ilike('surname', `${startsWith}%`) // Using ilike for case-insensitive matching
         .order('surname', { ascending: true })
+    if (error) {
+        console.error('Error fetching drivers:', error.message);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
+
+    if (!data || data.length === 0) {
+        return res.status(404).json({ error: 'No drivers found with the provided name' });
+    }
 
 
     res.send(data);
@@ -500,7 +535,7 @@ app.get('/f4/standings/:raceId/constructors', async (req, res) => {
         res.send(data);
     } catch (error) {
         console.error('Error fetching constructor data:', error.message);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ error: 'No data found for the specified raceId' });
     }
 });
 
