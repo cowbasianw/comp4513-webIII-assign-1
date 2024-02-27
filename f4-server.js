@@ -37,28 +37,10 @@ app.get('/f4/circuit/season/:year', async (req, res) => {
     try {
         const { year } = req.params;
 
-        // Retrieve race data for the specified year
-        const { data: racesData, error: racesError } = await supabase
-            .from('races')
-            .select('circuitId')
-            .eq('year', year);
-
-        if (racesError) {
-            throw racesError;
-        }
-
-        if (!racesData || racesData.length === 0) {
-            return res.status(404).json({ error: 'No race data found for the specified year' });
-        }
-
-        // Extract circuit IDs from race data
-        const circuitIds = racesData.map(race => race.circuitId);
-
-        // Retrieve circuit details based on circuit IDs
         const { data: circuitsData, error: circuitsError } = await supabase
             .from('circuit')
-            .select()
-            .in('circuitId', circuitIds)
+            .select('*, races!inner(year)')
+            .eq('races.year', year)
             .order('circuitId', { ascending: true });
 
         if (circuitsError) {
@@ -229,24 +211,10 @@ app.get('/f4/races/season/:year/:round', async (req, res) => {
 app.get('/f4/races/circuit/:ref', async (req, res) => {
     try {
         const { ref } = req.params;
-        const { data: circuitData, error: circuitError } = await supabase
-            .from('circuit')
-            .select() // Select all fields from both tables
-            .eq('circuitRef', ref)
-        if (circuitError) {
-            throw circuitError;
-        }
-
-        if (!circuitData || circuitData.length === 0) {
-            return res.status(404).json({ error: 'No race data found for the specified year' });
-        }
-
-        // Extract circuit IDs from circuit data
-        const circuitIds = circuitData.map(circuit => circuit.circuitId);
         const { data: raceData, error: raceError } = await supabase
             .from('races')
-            .select()
-            .eq('circuitId', circuitIds)
+            .select('*, circuit!inner(circuitRef)')
+            .eq('circuit.circuitRef', ref)
             .order('year', { ascending: true }); // Order by round in ascending order
 
         if (raceError) {
@@ -267,25 +235,11 @@ app.get('/f4/races/circuit/:ref/season/:startYear/:endYear', async (req, res) =>
     try {
         const { ref, startYear, endYear } = req.params;
 
-        // Retrieve race data for the specified circuit reference and range of years
-        const { data: circuitData, error: circuitError } = await supabase
-            .from('circuit')
-            .select() // Select all fields from both tables
-            .eq('circuitRef', ref)
-        if (circuitError) {
-            throw circuitError;
-        }
 
-        if (!circuitData || circuitData.length === 0) {
-            return res.status(404).json({ error: 'No race data found for the specified year' });
-        }
-
-        // Extract circuit IDs from circuit data
-        const circuitIds = circuitData.map(circuit => circuit.circuitId);
         const { data: raceData, error: raceError } = await supabase
             .from('races')
-            .select()
-            .eq('circuitId', circuitIds)
+            .select('*, circuit!inner(circuitRef)')
+            .eq('circuit.circuitRef', ref)
             .gte('year', startYear) // Filter by start year
             .lte('year', endYear) // Filter by end year
             .order('year', { ascending: true }); // Order by year in ascending order
@@ -310,8 +264,8 @@ app.get('/f4/result/:raceId', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('result')
-            .select(`resultId, raceId (name, round, year, date), driverId(driverRef, code, forename, surname),
-                 constructorId (name, constructorRef, nationality), number, grid, position
+            .select(`resultId, races!inner (name, round, year, date), drivers!inner(driverRef, code, forename, surname),
+                 constructor!inner(name, constructorRef, nationality), number, grid, position
                 , positionText, positionOrder, points, laps, time, milliseconds, fastestLap,
                 rank, fastestLapTime, fastestLapSpeed, statusId`)
             .eq('raceId', raceId)
@@ -360,9 +314,9 @@ app.get('/f4/result/drivers/:driverRef', async (req, res) => {
 
         // Retrieve driver data for the specified driverRef
         const { data: driverData, error: driverError } = await supabase
-            .from('drivers')
-            .select()
-            .eq('driverRef', driverRef);
+            .from('result')
+            .select('*, drivers!inner (driverRef)')
+            .eq('drivers.driverRef', driverRef);
 
         if (driverError) {
             throw driverError;
@@ -372,25 +326,7 @@ app.get('/f4/result/drivers/:driverRef', async (req, res) => {
             return res.status(404).json({ error: 'No driver data found for the specified Ref' });
         }
 
-        // Extract driverId from driver data
-        const driverId = driverData[0].driverId;
-
-        // Retrieve result data for the specified driverId
-        const { data: resultData, error: resultError } = await supabase
-            .from('result')
-            .select()
-            .eq('driverId', driverId);
-
-        if (resultError) {
-            throw resultError;
-        }
-
-        if (!resultData || resultData.length === 0) {
-            return res.status(404).json({ error: 'No result data found for the specified driver' });
-        }
-
-
-        res.json(resultData);
+        res.json(driverData);
     } catch (error) {
         console.error('Error fetching data:', error.message);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -424,28 +360,12 @@ app.get('/f4/result/drivers/:driverRef/seasons/:start/:end', async (req, res) =>
         const { driverRef, start, end } = req.params;
 
         // Retrieve driver data for the specified driverRef
-        const { data: driverData, error: driverError } = await supabase
-            .from('drivers')
-            .select()
-            .eq('driverRef', driverRef);
-
-        if (driverError) {
-            throw driverError;
-        }
-
-        if (!driverData || driverData.length === 0) {
-            return res.status(404).json({ error: 'No driver data found for the specified Ref' });
-        }
-
-        // Extract driverId from driver data
-        const driverId = driverData[0].driverId;
-
-
-        // Retrieve result data for the specified driverId within the specified range of years
         const { data: resultData, error: resultError } = await supabase
             .from('result')
-            .select('*, raceId(year)')
-            .eq('driverId', driverId);
+            .select('*, races!inner (year, round, name), drivers!inner (driverRef)')
+            .eq('drivers.driverRef', driverRef)
+            .gte('races.year', start)
+            .lte('races.year', end);
 
         if (resultError) {
             throw resultError;
@@ -455,28 +375,21 @@ app.get('/f4/result/drivers/:driverRef/seasons/:start/:end', async (req, res) =>
 
             return res.status(404).json({ error: 'No result data found for the specified driver within the specified range of years' });
         }
-        // Extract the years from the result data
-        const years = resultData.map(result => result.raceId.year);
-
-        // Filter the resultData based on the specified range of years and driverId
-        const filteredData = resultData.filter(result => {
-            const raceYear = result.raceId.year;
-            return raceYear >= start && raceYear <= end && result.driverId === driverId;
-        });
-        res.json(filteredData);
+        res.json(resultData);
 
     } catch (error) {
         console.error('Error fetching data:', error.message);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ error: 'The range of years is not acceptable.' });
     }
 });
+
 app.get('/f4/qualifying/:raceId', async (req, res) => {
     const { raceId } = req.params;
     try {
         const { data, error } = await supabase
             .from('qualifying')
-            .select(`*, raceId (name, round, year, date), driverId(driverRef, code, forename, surname),
-                 constructorId (name, constructorRef, nationality)`)
+            .select(`*, races!inner (name, round, year, date),  drivers!inner(driverRef, code, forename, surname),
+                 constructor!inner (name, constructorRef, nationality)`)
             .eq('raceId', raceId)
             .order('position', { ascending: true });
 
